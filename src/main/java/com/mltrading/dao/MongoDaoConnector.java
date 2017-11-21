@@ -26,13 +26,11 @@ public class MongoDaoConnector {
      * create
      */
     public MongoDaoConnector() {
-        try {
+
             String uri = MLProperties.getProperty("mongoDB");
             Integer port = new Integer(MLProperties.getProperty("mongoDBPort"));
             mongoClient = new MongoClient( uri , port );
-        } catch (Exception e) {
-            log.error("MongoDaoConnector error:" + e);
-        }
+
     }
 
 

@@ -15,8 +15,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 
+
 /**
  * basic class implementation for machine learning status
+ * container of MLStock and MLStatus for result
  */
 public class MLStocks  implements Serializable {
     private String codif;
@@ -25,6 +27,7 @@ public class MLStocks  implements Serializable {
     private MLStatus status;
 
     JavaRDD<FeaturesStock> testData;
+
 
     public MLStocks(String codif) {
         this.codif = codif;
@@ -76,17 +79,27 @@ public class MLStocks  implements Serializable {
         }
     }
 
-    public void save() {
+    public void saveValidator() {
         for (Map.Entry<PredictionPeriodicity, MLStock> entry : container.entrySet()) {
-            entry.getValue().save();
+            entry.getValue().saveValidator();
         }
     }
 
-    public void generateValidator(String methodName) {
+    /**
+     * saveValidator for specific perdiod
+     * @param p
+     */
+    public void saveModel(PredictionPeriodicity p) {
+        container.get(p).saveModel();
+    }
+
+    public void generateValidator(String methodName, int sector) {
 
         try {
+            Class[] cArg = new Class[1];
+            cArg[0] = Integer.class;
             MatrixValidator validator = new MatrixValidator();
-            validator.getClass().getMethod(methodName,null).invoke(validator, null);
+            validator.getClass().getMethod(methodName,cArg).invoke(validator, sector);
             for (Map.Entry<PredictionPeriodicity, MLStock> entry : container.entrySet()) {
                 entry.getValue().setValidator(validator.clone());
             }
@@ -98,8 +111,14 @@ public class MLStocks  implements Serializable {
             e.printStackTrace();
         }
 
-
     }
+
+    public void setValidators(MatrixValidator validator) {
+        for (Map.Entry<PredictionPeriodicity, MLStock> entry : container.entrySet()) {
+            entry.getValue().setValidator(validator);
+        }
+    }
+
 
 
     /**
@@ -175,6 +194,7 @@ public class MLStocks  implements Serializable {
      * @param ref
      * @return
      */
+    @Deprecated
     public MLStocks replaceValidator(MLStocks ref) {
         int position = this.getValidator(PredictionPeriodicity.D1).getCol();
         MLStocks copy = new MLStocks(this.getCodif());
@@ -185,6 +205,18 @@ public class MLStocks  implements Serializable {
         }
 
         return copy;
+    }
+
+
+    public void resetScoring() {
+        setScoring(false);
+    }
+
+
+    public void setScoring(boolean scoring) {
+        for (Map.Entry<PredictionPeriodicity, MLStock> entry : container.entrySet()) {
+            entry.getValue().setModelImprove(scoring);
+        }
     }
 
 
@@ -226,6 +258,11 @@ public class MLStocks  implements Serializable {
         }
     }
 
+
+    public void saveDB(PredictionPeriodicity p) {
+        container.get(p).saveModelDB();
+    }
+
     public void loadDB() {
         for (Map.Entry<PredictionPeriodicity, MLStock> entry : container.entrySet()) {
             entry.getValue().loadModelDB();
@@ -235,6 +272,20 @@ public class MLStocks  implements Serializable {
     public void updateColValidator(int col) {
         for (Map.Entry<PredictionPeriodicity, MLStock> entry : container.entrySet()) {
             entry.getValue().getValidator().setCol(col);
+        }
+    }
+
+    public Map<PredictionPeriodicity,MatrixValidator> getValidators() {
+        Map<PredictionPeriodicity,MatrixValidator> mapValidator = new HashMap<>();
+        for (Map.Entry<PredictionPeriodicity, MLStock> entry : container.entrySet()) {
+            mapValidator.put(entry.getKey(),entry.getValue().getValidator());
+        }
+        return mapValidator;
+    }
+
+    public void mergeValidator(MLStocks ref) {
+        for (Map.Entry<PredictionPeriodicity, MLStock> entry : container.entrySet()) {
+            entry.getValue().mergetValidator(ref.getValidator(entry.getKey()));
         }
     }
 }

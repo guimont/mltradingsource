@@ -35,11 +35,13 @@ public class CacheMLStock {
     private static final Logger log = LoggerFactory.getLogger(CacheMLStock.class);
 
     private static final Map<String, MLStocks> mlStockMap;
+    private static final Map<String, MLRank> mlRankMap;
 
     static {
         System.setProperty("hadoop.home.dir", MLProperties.getProperty("spark.hadoop.path"));
         System.setProperty("spark.sql.warehouse.dir", MLProperties.getProperty("spark.warehouse"));
         mlStockMap = new HashMap<>();
+        mlRankMap = new HashMap<>();
     }
 
     //static SparkConf sparkConf = new SparkConf().setAppName("JavaRandomForest").setMaster("local[*]");
@@ -69,8 +71,8 @@ public class CacheMLStock {
         // load model on worker
         SynchWorker.load();
 
-        load(new ArrayList(CacheStockGeneral.getIsinCache().values()));
         load(new ArrayList(CacheStockSector.getSectorCache().values()));
+        load(new ArrayList(CacheStockGeneral.getIsinCache().values()));
 
         CacheMLActivities.addActivities(g.setEndDate());
     }
@@ -87,8 +89,11 @@ public class CacheMLStock {
         for (StockHistory s : sl) {
             MLStocks mls = new MLStocks(s.getCodif());
             mls.distibute();
+            MLRank mlr = new MLRank(s.getCodif());
         }
 
+
+        boolean validate = true;
 
         for (StockHistory s : sl) {
             MLActivities a = new MLActivities("CacheMLStock", "", "load", 0, 0, false);
@@ -96,7 +101,7 @@ public class CacheMLStock {
 
                 MLStocks mls = new MLStocks(s.getCodif());
                 mls.load();
-                mls.getStatus().loadPerf(s.getCodif());
+                validate = mls.getStatus().loadPerf(s.getCodif());
                 mlStockMap.put(s.getCodif(), mls);
                 CacheMLActivities.addActivities(a.setEndDate().setStatus("Success"));
 
@@ -104,6 +109,14 @@ public class CacheMLStock {
                 log.error(e.toString());
                 CacheMLActivities.addActivities(a.setEndDate().setStatus("Failed"));
             }
+        }
+
+        if (validate == false) {
+            log.error("load perf is not correctly filled. Need to regenerate data");
+            /*MlForecast ml = new MlForecast();
+            ml.processList();
+            //load status
+            CacheMLStock.savePerf();*/
         }
 
 
@@ -114,19 +127,33 @@ public class CacheMLStock {
         return mlStockMap;
     }
 
+    public static Map<String, MLRank> getMlRankCache() {
+        return mlRankMap;
+    }
+
     public static JavaSparkContext getJavaSparkContext() {
         return sc;
     }
 
 
     public static void save() {
+
+        if (mlStockMap.values().isEmpty()) return;
+
         deleteModel();
         SynchWorker.delete();
 
         for (MLStocks mls : mlStockMap.values()) {
-            mls.save();
-            mls.saveDB();
+            PeriodicityList.periodicity.forEach(p -> {
+                if (mls.getSock(p).isModelImprove() == true) {
+                    mls.saveModel(p);
+                    mls.saveDB(p);
+                }
+            });
+            /* saveValidator Validator each time because old validator is deleted*/
             mls.getStatus().savePerf(mls.getCodif());
+            mls.saveValidator();
+
         }
 
         SynchWorker.save();
@@ -190,5 +217,6 @@ public class CacheMLStock {
             mls.loadDB();
         }
     }
+
 
 }

@@ -1,6 +1,7 @@
 package com.mltrading.ml;
 
 import com.mltrading.dao.InfluxDaoConnector;
+import com.mltrading.dao.TimeSeriesDao.DaoChecker;
 import org.influxdb.dto.QueryResult;
 
 
@@ -11,7 +12,7 @@ import java.util.List;
 /**
  * Created by gmo on 16/02/2016.
  */
-public class MLStatus implements Serializable{
+public class MLStatus implements Serializable,DaoChecker{
 
     private double avgD1 = 0;
     private double avgD5 = 0;
@@ -28,10 +29,27 @@ public class MLStatus implements Serializable{
 
     private List<MLPerformances> perfList;
 
+
+    /**
+     * save perf for all period
+     * @param code
+     */
     public void savePerf(String code) {
         for (MLPerformances perfs : perfList) {
             perfs.save(code);
         }
+    }
+
+    /**
+     * save perf for specific period
+     * @param code
+     * @param p
+     */
+    public void savePerf(String code, PredictionPeriodicity p) {
+        for (MLPerformances perfs : perfList) {
+            perfs.save(code,p);
+        }
+
     }
 
 
@@ -205,8 +223,14 @@ public class MLStatus implements Serializable{
 
     public void replaceElementList(List<MLPerformances> rep, PredictionPeriodicity period) throws Exception {
 
-        for (int i = 0; i< this.getPerfList().size(); i++) {
-            this.getPerfList().get(i).setMl(rep.get(i).getMl(period), period);
+        try {
+            for (int i = 0; i < this.getPerfList().size(); i++) {
+                this.getPerfList().get(i).setMl(rep.get(i).getMl(period), period);
+            }
+        }
+        catch (Exception e) {
+            System.out.println("fuck off: " + period + " " +this.getPerfList());
+
         }
     }
 
@@ -215,7 +239,7 @@ public class MLStatus implements Serializable{
      * @param code
      * @return O or max last StockHistory
      */
-    public void loadPerf(final String code) {
+    public boolean loadPerf(final String code) {
         final int max = CacheMLStock.RENDERING;
         perfList = new ArrayList();
 
@@ -228,6 +252,11 @@ public class MLStatus implements Serializable{
         QueryResult listP20 = InfluxDaoConnector.getPoints(query, MatrixValidator.dbNameModel);
         query = "SELECT * FROM "+code +"PD40 where time > '2015-06-01T00:00:00Z'";
         QueryResult listP40 = InfluxDaoConnector.getPoints(query, MatrixValidator.dbNameModel);
+
+        if (checker(listP1) == false) return false;
+        if (checker(listP5) == false) return false;
+        if (checker(listP20) == false) return false;
+        if (checker(listP40) == false) return false;
 
         int sizeP1 = listP1.getResults().get(0).getSeries().get(0).getValues().size();
         int sizeP5 = listP5.getResults().get(0).getSeries().get(0).getValues().size();
@@ -251,6 +280,8 @@ public class MLStatus implements Serializable{
         }
 
         calculeAvgPrd();
+
+        return true;
 
     }
 
@@ -282,9 +313,9 @@ public class MLStatus implements Serializable{
 
 
     public void setPerfList(List<MLPerformances> perfList,PredictionPeriodicity p) throws Exception {
-        if (p == PredictionPeriodicity.D1)
+        if (p == PredictionPeriodicity.D1 || this.perfList == null) {
             this.perfList = perfList;
-        else replaceElementList(perfList,p);
+        } else replaceElementList(perfList,p);
     }
 
 
@@ -353,4 +384,8 @@ public class MLStatus implements Serializable{
 
         return 0;
     }
+
+
+
+
 }

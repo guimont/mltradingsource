@@ -62,8 +62,15 @@ public class StockPerformance implements Serializable{
     }
 
 
+    public Map<PredictionPeriodicity, PerfModel> getContainer() {
+        return container;
+    }
 
-    private class PerfModel {
+    public void setContainer(Map<PredictionPeriodicity, PerfModel> container) {
+        this.container = container;
+    }
+
+    private class PerfModel implements Serializable{
         PredictionPeriodicity p;
         double error;
         double yield;
@@ -96,27 +103,58 @@ public class StockPerformance implements Serializable{
         public void setVectorSize(int vectorSize) {
             this.vectorSize = vectorSize;
         }
+
+        public PredictionPeriodicity getP() {
+            return p;
+        }
+
+        public void setP(PredictionPeriodicity p) {
+            this.p = p;
+        }
     }
 
 
-    public void load(String code) {
+    /**
+     * not use akka
+     * @param code
+     * @return
+     */
+    public StockPerformance load(String code) {
 
         try {
             MLStocks s = CacheMLStock.getMLStockCache().get(code);
-            PeriodicityList.periodicity.forEach(p-> {
-                String query = "SELECT count(vectorSize) FROM " + code + "V" + p.toString();
+
+            if (s != null) {
+
+                this.setName(code);
+                this.setModelType("RandomForest");
+
+                String query = "SELECT (vectorSize) FROM " + code + "V" + PredictionPeriodicity.D1 + " ORDER BY DESC limit 1";
                 QueryResult result = InfluxDaoConnector.getPoints(query, MatrixValidator.dbNamePerf);
-                MLStatus l = s.getStatus();
-                PerfModel pm = container.get(p);
-                MatrixValidator mv = s.getValidator(p);
-                pm.setVectorSize(mv.getVectorSize());
-                pm.setError(l.getErrorRate(p));
-                pm.setYield(l.getAvg(p));
-            });
+                this.setLastUpdate((String) result.getResults().get(0).getSeries().get(0).getValues().get(0).get(0));
+
+                /* considering iteration is same for all period*/
+                query = "SELECT count(vectorSize) FROM " + code + "V" + PredictionPeriodicity.D1;
+                result = InfluxDaoConnector.getPoints(query, MatrixValidator.dbNamePerf);
+                this.setIteration (new Double((Double)result.getResults().get(0).getSeries().get(0).getValues().get(0).get(1)).intValue());
+                PeriodicityList.periodicity.forEach(p -> {
+                    MLStatus l = s.getStatus();
+                    PerfModel pm = container.get(p);
+                    MatrixValidator mv = s.getValidator(p);
+                    pm.setVectorSize(mv.getVectorSize());
+                    pm.setError(l.getErrorRate(p));
+                    pm.setYield(l.getAvg(p));
+                });
+                return this;
+            }
+
+            return null;
 
 
         } catch (Exception e) {
 
+            return null;
         }
+
     }
 }

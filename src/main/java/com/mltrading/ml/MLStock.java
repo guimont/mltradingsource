@@ -21,17 +21,35 @@ import java.io.Serializable;
 import java.util.Collection;
 
 
+/**
+ * Machine learning stock
+ * class to define object for ml
+ */
 public class MLStock  implements Serializable {
     private String codif;
     private PredictionPeriodicity period;
     private RandomForestModel model;
     private MatrixValidator validator;
+    private boolean modelImprove;
     private static final Logger log = LoggerFactory.getLogger(MLStock.class);
 
     public MLStock(String codif, PredictionPeriodicity period) {
         this.period = period;
         this.codif = codif;
         validator = new MatrixValidator();
+    }
+
+    /**
+     * check is improve model to know if model could be save
+     * save is a long process so have to optimize it
+     * @return
+     */
+    public boolean isModelImprove() {
+        return modelImprove;
+    }
+
+    public void setModelImprove(boolean modelImprove) {
+        this.modelImprove = modelImprove;
     }
 
     public MatrixValidator getValidator() {
@@ -58,60 +76,94 @@ public class MLStock  implements Serializable {
         this.model = model;
     }
 
-    public void saveModelDB() {
 
+    /**
+     * load model form mongoDB on file system
+     */
+    public void removeModelDB() {
         try {
-            if (System.getProperty("os.name").contains("Windows"))
-                path = "/";
             GridFS gfsModel = (GridFS) Requester.sendRequest(new QueryMongoRequest("model/Model" + period.toString() + codif));
-            File dir = new File(path+"model/Model" + period.toString() + codif);
-            Collection<File> files = FileUtils.listFiles(dir , null, true);
-            for (File f:files) {
-                GridFSInputFile gfsFile = gfsModel.createFile(f);
-                if (f.getPath().contains("_temporary"))
-                    gfsFile.setFilename(f.getPath().split("_temporary")[0]+f.getName());
-                else
-                    gfsFile.setFilename(f.getPath());
-                gfsFile.save();
+
+            DBCursor cursor = gfsModel.getFileList();
+            while (cursor.hasNext()) {
+                GridFSDBFile f = gfsModel.findOne(cursor.next());
+                gfsModel.remove(f.getFilename());
             }
         } catch (Exception e) {
-            log.error("saveModel: " + codif + e);
+            log.error("remove: " + codif + e);
         }
     }
 
 
-    public void saveModel() {
-        this.model.save(CacheMLStock.getJavaSparkContext().sc(), path + "model/Model" + period.toString() + codif);
+    /**
+     * save mllib model on mongoDB
+     */
+    public void saveModelDB() {
+        if (isModelImprove()) {
+            removeModelDB();
+
+            try {
+                GridFS gfsModel = (GridFS) Requester.sendRequest(new QueryMongoRequest("model/Model" + period.toString() + codif));
+
+                File dir = new File(path + "model/Model" + period.toString() + codif);
+                Collection<File> files = FileUtils.listFiles(dir, null, true);
+                for (File f : files) {
+                    GridFSInputFile gfsFile = gfsModel.createFile(f);
+                    if (f.getPath().contains("_temporary"))
+                        gfsFile.setFilename(f.getPath().split("_temporary")[0] + f.getName());
+                    else
+                        gfsFile.setFilename(f.getPath());
+                    gfsFile.save();
+                }
+            } catch (Exception e) {
+                log.error("saveModel: " + codif + e);
+            }
+        }
     }
+
+
 
     public static String path= MLProperties.getProperty("model.path");
 
+    /**
+     * load spark ml model form filesystem
+     */
     public void loadModel() {
         this.model = RandomForestModel.load(CacheMLStock.getJavaSparkContext().sc(), path + "model/Model" + period.toString() + codif);
     }
 
 
+    /**
+     * loader
+     */
     public void load() {
         loadModel();
         validator.loadValidator(codif+"V"+period.toString());
     }
 
-    public void save() {
-        saveModel();
-        validator.saveModel(codif+"V"+period.toString());
+
+    /**
+     * save model, spark model on file system
+     */
+    public void saveModel() {
+        this.model.save(CacheMLStock.getJavaSparkContext().sc(), path + "model/Model" + period.toString() + codif);
+    }
+
+    /**
+     * save validator in influxdb modelNote database
+     * fomat is 'codif''V''period'. Example ORAVD5
+     */
+    public void saveValidator() {
+        validator.saveModel(codif + "V" + period.toString());
     }
 
 
+    /**
+     * load model form mongoDB on file system
+     */
     public void distibute() {
-        //MongoClient mongoClient = null;
         try {
-            if (!System.getProperty("os.name").contains("Windows"))
-                path = "/";
-            //mongoClient = new MongoClient( "172.22.30.111" , 27017 );
-
-
             GridFS gfsModel = (GridFS) Requester.sendRequest(new QueryMongoRequest("model/Model" + period.toString() + codif));
-
 
             DBCursor cursor = gfsModel.getFileList();
             while (cursor.hasNext()) {
@@ -144,5 +196,9 @@ public class MLStock  implements Serializable {
 
     public void loadModelDB() {
         distibute();
+    }
+
+    public void mergetValidator(MatrixValidator validator) {
+        this.getValidator().mergeEconomical(validator);
     }
 }

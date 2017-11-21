@@ -2,7 +2,6 @@ package com.mltrading.models.util;
 
 import com.mltrading.dao.InfluxDaoConnector;
 
-
 import com.mltrading.models.stock.StockHistory;
 import org.influxdb.dto.BatchPoints;
 
@@ -66,7 +65,7 @@ public class CsvFileReader {
                     sh.setHighest(new Double(max));
                     sh.setOpening(new Double(open));
 
-                    //HistoryParser.saveHistory(bp, sh);
+                   //saveHistory(bp, sh);
 
                 }
 

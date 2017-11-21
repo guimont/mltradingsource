@@ -5,11 +5,14 @@ import com.mltrading.dao.impl.InfluxDaoImpl;
 import com.mltrading.influxdb.dto.QueryRequest;
 
 import com.mltrading.ml.MatrixValidator;
+import com.mltrading.models.stock.HistogramDocument;
+import com.mltrading.models.stock.StockDocument;
 import com.mltrading.models.stock.StockHistory;
 import org.influxdb.dto.BatchPoints;
 import org.influxdb.dto.Query;
 import org.influxdb.dto.QueryResult;
 
+import java.net.SocketTimeoutException;
 import java.util.List;
 
 /**
@@ -29,6 +32,10 @@ public class InfluxDaoConnector {
         if (!repo.contains(StockHistory.dbName)) dao.createDB(StockHistory.dbName);
         if (!repo.contains(MatrixValidator.dbNamePerf)) dao.createDB(MatrixValidator.dbNamePerf);
         if (!repo.contains(MatrixValidator.dbNameModel)) dao.createDB(MatrixValidator.dbNameModel);
+        if (!repo.contains(StockDocument.dbName)) dao.createDB(StockDocument.dbName);
+        if (!repo.contains(HistogramDocument.dbName)) dao.createDB(HistogramDocument.dbName);
+
+
 
     }
 
@@ -42,7 +49,15 @@ public class InfluxDaoConnector {
     }
 
     public static void writePoints(final BatchPoints batchPoints) {
-        getInstance().dao.getDB().write(batchPoints);
+        int loop = 0;
+        try {
+            getInstance().dao.getDB().write(batchPoints);
+        } catch (Exception e) {
+            if (loop < 3) {
+                loop++;
+                writePoints(batchPoints);
+            }
+        }
     }
 
     public static QueryResult getPoints(final String queryString, String dbName) {
@@ -63,6 +78,13 @@ public class InfluxDaoConnector {
             getInstance().dao.deleteDB(name);
             getInstance().dao.createDB(name);
         }
+    }
+
+    public static BatchPoints getBatchPointsV1(String dbName) {
+        return BatchPoints
+            .database(dbName)
+            .retentionPolicy("autogen")
+            .build();
     }
 
 
